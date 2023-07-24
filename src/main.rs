@@ -11,6 +11,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// compute and check MD5 message digest
     MD5(md5::MD5),
 }
 
@@ -18,6 +19,6 @@ fn main() {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::MD5(cmd) => cmd.hash(),
+        Commands::MD5(cmd) => cmd.exec(),
     }
 }
