@@ -1,5 +1,9 @@
 use clap::Args;
-use std::{fmt, path::PathBuf};
+use std::{
+    fmt,
+    io::{self, Write},
+    path::PathBuf,
+};
 
 #[derive(Args)]
 pub struct MD5 {
@@ -23,9 +27,10 @@ impl MD5 {
 
 fn process_file(file: &PathBuf) {
     let data = read_file(file);
-    let digest = compute(data);
+    let mut ctx = Context::new();
+    let _ = ctx.write(&data);
 
-    println!("{} {}", digest, file.display())
+    println!("{} {}", ctx.compute(), file.display())
 }
 
 fn read_file(_file: &PathBuf) -> Vec<u8> {
@@ -34,12 +39,39 @@ fn read_file(_file: &PathBuf) -> Vec<u8> {
 
 pub struct Digest(pub [u8; 16]);
 
+pub struct Context;
+
+impl io::Write for Context {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.consume(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 impl fmt::Display for Digest {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         unimplemented!()
     }
 }
 
-pub fn compute<T: AsRef<[u8]>>(_data: T) -> Digest {
-    unimplemented!()
+impl Context {
+    /// Create new Context to md5 hash calculation, with initial values.
+    pub fn new() -> Context {
+        unimplemented!()
+    }
+    /// Add last md5 word to data (padding and length of data), consume it and then
+    /// return state (hash) of the Context.
+    pub fn compute(self) -> Digest {
+        unimplemented!()
+    }
+}
+
+impl Context {
+    /// Consume data, calculate new state for each md5 word (512 bits).
+    fn consume(&mut self, _data: &[u8]) {
+        unimplemented!()
+    }
 }
