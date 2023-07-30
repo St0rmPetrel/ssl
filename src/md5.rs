@@ -37,7 +37,7 @@ fn read_file(_file: &PathBuf) -> Vec<u8> {
     unimplemented!()
 }
 
-pub struct Digest(pub [u8; 16]);
+pub struct Digest([u8; 16]);
 
 pub struct Context;
 
@@ -52,8 +52,15 @@ impl io::Write for Context {
 }
 
 impl fmt::Display for Digest {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!()
+    // Я тут понавляпывался в кучу ошибок, количество говнокода ниже превышает все разумные пределы. Запасись каплями для глаз
+    // Буду благодарен если созвонимся и разберем потом
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut coefs_repr: [String; 4] = Default::default();
+        for (i, coef_name) in "ABCD".chars().enumerate() {
+            let s = self.0[4*i..4*(i+1)].iter().rev().map(|x| format!(" {:x}", x)).reduce(|s, x| s + &x);
+            coefs_repr[i] = format!("{}:{:?}\n", coef_name, s)
+        }
+        write!(f, "{:?}", coefs_repr.iter().fold(String::new(), |s, x| s + &x))
     }
 }
 
