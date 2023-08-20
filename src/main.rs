@@ -19,7 +19,7 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match &cli.command {
+    match cli.command {
         Commands::MD5(cmd) => cmd.exec()?,
     }
     Ok(())
