@@ -41,8 +41,14 @@ fn hash_file(file: PathBuf) -> Result<(String, Digest)> {
 pub struct Digest([u8; 16]);
 
 impl fmt::Display for Digest {
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        unimplemented!()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in self.0.iter() {
+            let res = write!(f, "{:x}", byte);
+            if res.is_err() {
+                return res;
+            }
+        }
+        Ok(())
     }
 }
 
