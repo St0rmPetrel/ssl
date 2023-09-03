@@ -1,3 +1,4 @@
+use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 mod md5;
@@ -15,10 +16,11 @@ enum Commands {
     MD5(md5::MD5),
 }
 
-fn main() {
+fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    match &cli.command {
-        Commands::MD5(cmd) => cmd.exec(),
+    match cli.command {
+        Commands::MD5(cmd) => cmd.exec()?,
     }
+    Ok(())
 }
