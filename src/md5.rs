@@ -1,9 +1,8 @@
+use anyhow::Context as Ctx;
+use anyhow::Result;
 use clap::Args;
-use std::{
-    fmt,
-    io::{self, Write},
-    path::PathBuf,
-};
+use std::io::Write;
+use std::{fmt, fs, io, path::PathBuf};
 
 #[derive(Args)]
 pub struct MD5 {
@@ -13,28 +12,30 @@ pub struct MD5 {
 }
 
 impl MD5 {
-    pub fn exec(&self) {
-        match &self.file {
-            Some(files) => {
-                for file in files.iter() {
-                    process_file(file)
-                }
-            }
-            None => process_file(&PathBuf::from("-")),
-        };
+    pub fn exec(self) -> Result<()> {
+        // if no files in self.file add explicit stdin "-"
+        for file in self.file.unwrap_or(vec![PathBuf::from("-")]) {
+            let (name, digest) = hash_file(file)?;
+
+            println!("{} {}", name, digest);
+        }
+        Ok(())
     }
 }
 
-fn process_file(file: &PathBuf) {
-    let data = read_file(file);
-    let mut ctx = Context::new();
-    let _ = ctx.write(&data);
+/// read file (could be stdin "-") calculate hash of the file data
+fn hash_file(file: PathBuf) -> Result<(String, Digest)> {
+    let name = String::from(file.to_str().unwrap_or("-"));
+    let mut buf_r: Box<dyn io::BufRead> = match name.as_str() {
+        "-" => Box::new(io::BufReader::new(io::stdin())),
+        _ => Box::new(io::BufReader::new(
+            fs::File::open(file).with_context(|| format!("could not open file `{}`", name))?,
+        )),
+    };
+    let mut hasher = Context::new();
+    io::copy(&mut buf_r, &mut hasher).with_context(|| "could not read data")?;
 
-    println!("{} {}", ctx.compute(), file.display())
-}
-
-fn read_file(_file: &PathBuf) -> Vec<u8> {
-    unimplemented!()
+    Ok((name, hasher.compute()))
 }
 
 pub struct Digest(pub [u8; 16]);
@@ -75,7 +76,7 @@ pub struct Context {
     d_s: u32,
 }
 
-impl io::Write for Context {
+impl Write for Context {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.consume(buf);
         Ok(buf.len())
