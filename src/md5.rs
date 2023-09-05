@@ -9,6 +9,10 @@ pub struct MD5 {
     /// Files to digest (optional; default is stdin).
     /// With no FILE, or when FILE is -, read standard input.
     file: Option<Vec<PathBuf>>,
+
+    /// create a BSD-style checksum.
+    #[arg(short, long)]
+    tag: bool,
 }
 
 impl MD5 {
@@ -17,10 +21,19 @@ impl MD5 {
         for file in self.file.unwrap_or(vec![PathBuf::from("-")]) {
             let (name, digest) = hash_file(file)?;
 
-            println!("{} {}", name, digest);
+            print_file(name, digest, self.tag);
         }
         Ok(())
     }
+}
+
+// print file digest in specific format.
+fn print_file(name: String, digest: Digest, is_bsd: bool) {
+    if is_bsd {
+        println!("MD5 ({}) = {}", name, digest);
+        return;
+    }
+    println!("{}\t{}", digest, name);
 }
 
 /// read file (could be stdin "-") calculate hash of the file data
@@ -43,7 +56,7 @@ pub struct Digest([u8; 16]);
 impl fmt::Display for Digest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for byte in self.0.iter() {
-            let res = write!(f, "{:x}", byte);
+            let res = write!(f, "{:0>2x}", byte);
             if res.is_err() {
                 return res;
             }
