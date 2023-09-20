@@ -1,8 +1,14 @@
+use anyhow::anyhow;
 use anyhow::Context as Ctx;
 use anyhow::Result;
 use clap::Args;
-use std::io::Write;
-use std::{fmt, fs, io, path::PathBuf};
+use lazy_static::lazy_static;
+use regex::Regex;
+
+use std::io::{BufRead, Write};
+use std::{fmt, io, path::PathBuf};
+
+use crate::helper::Input;
 
 #[derive(Args)]
 pub struct MD5 {
@@ -10,47 +16,171 @@ pub struct MD5 {
     /// With no FILE, or when FILE is -, read standard input.
     file: Option<Vec<PathBuf>>,
 
-    /// create a BSD-style checksum.
+    /// create a BSD-style checksum if true.
+    /// else create GNU style checksum file.
     #[arg(short, long)]
     tag: bool,
+    /// read checksums from the FILEs and check them.
+    #[arg(short, long)]
+    check: bool,
 }
 
 impl MD5 {
+    /// md5 command enter point.
     pub fn exec(self) -> Result<()> {
-        // if no files in self.file add explicit stdin "-"
-        for file in self.file.unwrap_or(vec![PathBuf::from("-")]) {
-            let (name, digest) = hash_file(file)?;
+        if self.check {
+            self.check()
+        } else {
+            self.create()
+        }
+    }
 
-            print_file(name, digest, self.tag);
+    /// read and check checksum file(s).
+    /// compare for files listed in checksum file expected and actual computed hash of the file
+    /// (among the list).
+    fn check(self) -> Result<()> {
+        let failed = self
+            .file
+            .unwrap_or(vec![PathBuf::from("-")])
+            .into_iter()
+            .map(|f| {
+                let input = match Input::new(&f) {
+                    Ok(input) => input,
+                    Err(err) => {
+                        eprintln!("{}", err);
+                        return (f, 0, 1);
+                    }
+                };
+                let failed = io::BufReader::new(input)
+                    .lines()
+                    .map(|l| check_line(&l?))
+                    .filter_map(|x| x.err())
+                    .fold(0, |acc, err| {
+                        eprintln!("{}", err);
+                        acc + 1
+                    });
+                (f, failed, 0)
+            })
+            .filter(|(_, check_failed, open_failed)| *check_failed > 0 || *open_failed > 0)
+            .fold(0, |acc, (f, check_failed, open_failed)| {
+                if check_failed > 0 {
+                    eprintln!(
+                        "WARNING: {} computed checksums did NOT match or FAIL to read: {}",
+                        check_failed,
+                        f.to_str().unwrap(),
+                    );
+                }
+                if open_failed > 0 {
+                    eprintln!("WARNING: FAIL to open: {}", f.to_str().unwrap(),);
+                }
+                acc + check_failed + open_failed
+            });
+
+        if failed > 0 {
+            return Err(anyhow::anyhow!("WARNING: {} FAILS", failed));
+        }
+        Ok(())
+    }
+
+    /// create checksum file.
+    fn create(self) -> Result<()> {
+        // if no files in self.file add explicit stdin "-"
+        let failed = self
+            .file
+            .unwrap_or(vec![PathBuf::from("-")])
+            .into_iter()
+            .map(|f| -> Result<()> {
+                let digest = hash_file(&f)?;
+                print_file(&f, digest, self.tag);
+                Ok(())
+            })
+            .filter_map(|x| x.err())
+            .fold(0, |acc, err| {
+                eprintln!("{}", err);
+                acc + 1
+            });
+        if failed > 0 {
+            return Err(anyhow::anyhow!("WARNING: {} FAILS", failed));
         }
         Ok(())
     }
 }
 
 // print file digest in specific format.
-fn print_file(name: String, digest: Digest, is_bsd: bool) {
+fn print_file(file: &PathBuf, digest: Digest, is_bsd: bool) {
+    let name = file.to_str().unwrap_or("-");
     if is_bsd {
-        println!("MD5 ({}) = {}", name, digest);
-        return;
+        // BSD style checksum file
+        println!("MD5 ({}) = {}", name, digest)
+    } else {
+        // GNU style checksum file
+        println!("{}  {}", digest, name)
     }
-    println!("{}\t{}", digest, name);
 }
 
 /// read file (could be stdin "-") calculate hash of the file data
-fn hash_file(file: PathBuf) -> Result<(String, Digest)> {
-    let name = String::from(file.to_str().unwrap_or("-"));
-    let mut buf_r: Box<dyn io::BufRead> = match name.as_str() {
-        "-" => Box::new(io::BufReader::new(io::stdin())),
-        _ => Box::new(io::BufReader::new(
-            fs::File::open(file).with_context(|| format!("could not open file `{}`", name))?,
-        )),
-    };
+fn hash_file(file: &PathBuf) -> Result<Digest> {
+    let mut buf_r =
+        Input::new(&file).with_context(|| format!("fail to open {}", file.to_str().unwrap()))?;
     let mut hasher = Context::new();
-    io::copy(&mut buf_r, &mut hasher).with_context(|| "could not read data")?;
 
-    Ok((name, hasher.compute()))
+    io::copy(&mut buf_r, &mut hasher)
+        .with_context(|| format!("fail to read {}", file.to_str().unwrap()))?;
+
+    Ok(hasher.compute())
 }
 
+/// parse checksum file line, line can be in GNU or BSD style format.
+/// return filename and expected file hash.
+fn parse_checksum_line(line: &str) -> Result<(PathBuf, Digest)> {
+    lazy_static! {
+        static ref GNU_STYLE_RE: Regex =
+            Regex::new(r"^([[:alpha:]|0-9]{32})[[:space:]]+(.+)$").unwrap();
+    }
+    lazy_static! {
+        static ref BSD_STYLE_RE: Regex =
+            Regex::new(r"^MD5 \((.+)\)[[:space:]]*={1}[[:space:]]*([[:alpha:]|0-9]{32})$").unwrap();
+    }
+
+    if GNU_STYLE_RE.is_match(line) {
+        let caps = GNU_STYLE_RE.captures(line).unwrap();
+        let filename = PathBuf::from(caps.get(2).unwrap().as_str());
+        let expected_digest = Digest::from_str(caps.get(1).unwrap().as_str())?;
+        Ok((filename, expected_digest))
+    } else if BSD_STYLE_RE.is_match(line) {
+        let caps = BSD_STYLE_RE.captures(line).unwrap();
+        let filename = PathBuf::from(caps.get(1).unwrap().as_str());
+        let expected_digest = Digest::from_str(caps.get(2).unwrap().as_str())?;
+        Ok((filename, expected_digest))
+    } else {
+        Err(anyhow::anyhow!("fail to parse line: {}", line))
+    }
+}
+
+/// check line in checksum file
+fn check_line(line: &str) -> Result<()> {
+    let (file_name, expected_digest) = parse_checksum_line(line)?;
+
+    let actual_digest = match hash_file(&file_name) {
+        Ok(digest) => digest,
+        Err(err) => {
+            println!("{}: FAILED open or read", file_name.to_str().unwrap());
+            return Err(err);
+        }
+    };
+
+    let file_name = file_name.to_str().unwrap();
+
+    if actual_digest != expected_digest {
+        println!("{}: FAILED", file_name);
+        return Err(anyhow!("computed checksum did NOT match: {}", file_name));
+    } else {
+        println!("{}: OK", file_name);
+        Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq)]
 pub struct Digest([u8; 16]);
 
 impl fmt::Display for Digest {
@@ -74,6 +204,16 @@ impl Digest {
         digest[12..16].clone_from_slice(&as_u8_le(d_s));
 
         Digest(digest)
+    }
+
+    fn from_str(s: &str) -> Result<Digest> {
+        let mut digest = [0u8; 16];
+        digest
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, x)| *x = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap());
+
+        Ok(Digest(digest))
     }
 }
 
@@ -136,7 +276,7 @@ const PADDING: [u8; 64] = [
 ];
 
 const DATA_BITS_LENGTH_BYTE_SIZE: usize = 8;
-const END_OF_DATA_BYTE_SIZE: usize = 8;
+const END_OF_DATA_BYTE_SIZE: usize = 1;
 
 impl Context {
     /// Consume data, calculate new state for each md5 word (512 bits).
@@ -160,25 +300,29 @@ impl Context {
         // check self.buf_seed
         // if buf_seed > 64 - 9 => two final chunks
         // else => one final chunk
-        if self.buf_seed < CHUNK_BYTE_SIZE - (END_OF_DATA_BYTE_SIZE + DATA_BITS_LENGTH_BYTE_SIZE) {
+        if self.buf_seed <= CHUNK_BYTE_SIZE - (END_OF_DATA_BYTE_SIZE + DATA_BITS_LENGTH_BYTE_SIZE) {
             let pading_bytes_len = CHUNK_BYTE_SIZE - DATA_BITS_LENGTH_BYTE_SIZE - self.buf_seed;
             self.buf[self.buf_seed..self.buf_seed + pading_bytes_len]
                 .clone_from_slice(&PADDING[..pading_bytes_len]);
             self.fill_data_len(data_bits_len);
+            //println!("{:x?}", &self.buf);
             self.eat_chunk();
         } else {
             // chunk 1
-            let pading_bytes_len_1 = CHUNK_BYTE_SIZE - self.buf_seed;
-            self.buf[self.buf_seed..self.buf_seed + pading_bytes_len_1]
-                .clone_from_slice(&PADDING[..pading_bytes_len_1]);
+            let pading_bytes_len = CHUNK_BYTE_SIZE - self.buf_seed;
+            self.buf[self.buf_seed..self.buf_seed + pading_bytes_len]
+                .clone_from_slice(&PADDING[..pading_bytes_len]);
+            //println!("{:x?}", &self.buf);
             self.eat_chunk();
 
             // chunk 2
-            let pading_bytes_len_2 = CHUNK_BYTE_SIZE - DATA_BITS_LENGTH_BYTE_SIZE;
-            self.buf[..pading_bytes_len_2].clone_from_slice(
-                &PADDING[pading_bytes_len_1..pading_bytes_len_1 + pading_bytes_len_2],
-            );
+            self.buf[..CHUNK_BYTE_SIZE - DATA_BITS_LENGTH_BYTE_SIZE]
+                .clone_from_slice(&PADDING[DATA_BITS_LENGTH_BYTE_SIZE..]);
+            if pading_bytes_len == 0 {
+                self.buf[0] = PADDING[0];
+            }
             self.fill_data_len(data_bits_len);
+            //println!("{:x?}", &self.buf);
             self.eat_chunk();
         }
 
@@ -390,5 +534,30 @@ mod tests {
             0x33, 0x60
         ],
         [0x41; 1018]
+    );
+
+    context!(
+        a_51,
+        [
+            0x8f, 0xe4, 0x66, 0x66, 0xaf, 0x29, 0x8b, 0xf2, 0xc1, 0x02, 0x2a, 0x62, 0x8d, 0x73,
+            0xe9, 0x54
+        ],
+        [0x41; 51]
+    );
+    context!(
+        a_64,
+        [
+            0xd2, 0x89, 0xa9, 0x75, 0x65, 0xbc, 0x2d, 0x27, 0xac, 0x8b, 0x85, 0x45, 0xa5, 0xdd,
+            0xba, 0x45
+        ],
+        [0x41; 64]
+    );
+    context!(
+        a_55,
+        [
+            0xe3, 0x8a, 0x93, 0xff, 0xe0, 0x74, 0xa9, 0x9b, 0x3f, 0xed, 0x47, 0xdf, 0xbe, 0x37,
+            0xdb, 0x21
+        ],
+        [0x41; 55]
     );
 }
