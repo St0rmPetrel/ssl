@@ -199,7 +199,25 @@ fn check_line(line: &str, algo: &HashAlgo) -> Result<()> {
             }
         }
         HashAlgo::SHA256 => {
-            unimplemented!()
+            let (file_name, expected_digest) = parse_sha256_checksum_line(line)?;
+
+            let actual_digest = match sha256_hash_file(&file_name) {
+                Ok(digest) => digest,
+                Err(err) => {
+                    println!("{}: FAILED open or read", file_name.to_str().unwrap());
+                    return Err(err);
+                }
+            };
+
+            let file_name = file_name.to_str().unwrap();
+
+            if actual_digest != expected_digest {
+                println!("{}: FAILED", file_name);
+                return Err(anyhow!("computed checksum did NOT match: {}", file_name));
+            } else {
+                println!("{}: OK", file_name);
+                Ok(())
+            }
         }
     }
 }
@@ -223,6 +241,32 @@ fn parse_md5_checksum_line(line: &str) -> Result<(PathBuf, md5::Digest)> {
         let caps = BSD_STYLE_RE.captures(line).unwrap();
         let filename = PathBuf::from(caps.get(1).unwrap().as_str());
         let expected_digest = md5::Digest::from_str(caps.get(2).unwrap().as_str())?;
+        Ok((filename, expected_digest))
+    } else {
+        Err(anyhow::anyhow!("fail to parse line: {}", line))
+    }
+}
+
+fn parse_sha256_checksum_line(line: &str) -> Result<(PathBuf, sha256::Digest)> {
+    lazy_static! {
+        static ref GNU_STYLE_RE: Regex =
+            Regex::new(r"^([[:alpha:]|0-9]{64})[[:space:]]+(.+)$").unwrap();
+    }
+    lazy_static! {
+        static ref BSD_STYLE_RE: Regex =
+            Regex::new(r"^SHA256 \((.+)\)[[:space:]]*={1}[[:space:]]*([[:alpha:]|0-9]{64})$")
+                .unwrap();
+    }
+
+    if GNU_STYLE_RE.is_match(line) {
+        let caps = GNU_STYLE_RE.captures(line).unwrap();
+        let filename = PathBuf::from(caps.get(2).unwrap().as_str());
+        let expected_digest = sha256::Digest::from_str(caps.get(1).unwrap().as_str())?;
+        Ok((filename, expected_digest))
+    } else if BSD_STYLE_RE.is_match(line) {
+        let caps = BSD_STYLE_RE.captures(line).unwrap();
+        let filename = PathBuf::from(caps.get(1).unwrap().as_str());
+        let expected_digest = sha256::Digest::from_str(caps.get(2).unwrap().as_str())?;
         Ok((filename, expected_digest))
     } else {
         Err(anyhow::anyhow!("fail to parse line: {}", line))

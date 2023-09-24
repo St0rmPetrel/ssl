@@ -1,3 +1,5 @@
+use anyhow::Result;
+
 use std::fmt;
 
 use crate::hasher;
@@ -31,6 +33,18 @@ impl fmt::Display for Digest {
             }
         }
         Ok(())
+    }
+}
+
+impl Digest {
+    pub fn from_str(s: &str) -> Result<Digest> {
+        let mut digest = [0u8; DIGEST_BYTE_SIZE];
+        digest
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, x)| *x = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap());
+
+        Ok(Digest(digest))
     }
 }
 
