@@ -1,8 +1,10 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
+mod hasher;
 mod helper;
 mod md5;
+mod sha256;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
