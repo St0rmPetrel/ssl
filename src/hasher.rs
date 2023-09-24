@@ -18,6 +18,7 @@ pub trait Context {
     fn get_digest(self) -> Self::Digest;
 }
 
+#[derive(Debug)]
 pub enum Endian {
     Big,
     Little,
@@ -32,18 +33,8 @@ pub struct Writer<Ctx: Context> {
 }
 
 impl<Ctx: Context> Write for Writer<Ctx> {
-    fn write(&mut self, mut buf: &[u8]) -> io::Result<usize> {
-        self.data_bytes_len = self.data_bytes_len.wrapping_add(buf.len());
-
-        while self.buf_seed + buf.len() > CHUNK_BYTE_SIZE {
-            self.buf[self.buf_seed..CHUNK_BYTE_SIZE]
-                .clone_from_slice(&buf[..CHUNK_BYTE_SIZE - self.buf_seed]);
-            self.hasher.compress(&self.buf);
-            buf = &buf[CHUNK_BYTE_SIZE - self.buf_seed..];
-            self.buf_seed = 0;
-        }
-        self.buf[self.buf_seed..self.buf_seed + buf.len()].clone_from_slice(buf);
-        self.buf_seed += buf.len();
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.consume(buf);
 
         Ok(buf.len())
     }
@@ -118,5 +109,19 @@ impl<Ctx: Context> Writer<Ctx> {
                 self.buf[CHUNK_BYTE_SIZE - 1] = ((bits_len >> 56) & 0xff) as u8;
             }
         }
+    }
+
+    fn consume(&mut self, mut buf: &[u8]) {
+        self.data_bytes_len = self.data_bytes_len.wrapping_add(buf.len());
+
+        while self.buf_seed + buf.len() > CHUNK_BYTE_SIZE {
+            self.buf[self.buf_seed..CHUNK_BYTE_SIZE]
+                .clone_from_slice(&buf[..CHUNK_BYTE_SIZE - self.buf_seed]);
+            self.hasher.compress(&self.buf);
+            buf = &buf[CHUNK_BYTE_SIZE - self.buf_seed..];
+            self.buf_seed = 0;
+        }
+        self.buf[self.buf_seed..self.buf_seed + buf.len()].clone_from_slice(buf);
+        self.buf_seed += buf.len();
     }
 }

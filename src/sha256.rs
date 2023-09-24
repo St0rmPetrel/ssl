@@ -1,6 +1,7 @@
+use std::fmt;
+
 use crate::hasher;
 use crate::helper::{as_u32_be, as_u8_be, right_rotate};
-use std::io::Write;
 
 const DIGEST_WORD_SIZE: usize = 8;
 const BYTES_IN_WORD: usize = 4;
@@ -18,7 +19,20 @@ const K: [u32; 64] = [
     0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ];
 
+#[derive(Debug, PartialEq)]
 pub struct Digest([u8; DIGEST_BYTE_SIZE]);
+
+impl fmt::Display for Digest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for byte in self.0.iter() {
+            let res = write!(f, "{:0>2x}", byte);
+            if res.is_err() {
+                return res;
+            }
+        }
+        Ok(())
+    }
+}
 
 pub struct Context {
     state: [u32; DIGEST_WORD_SIZE],
@@ -109,8 +123,10 @@ fn get_words(chunk: &[u8; CHUNK_BYTE_SIZE]) -> [u32; 64] {
     words
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     macro_rules! ctx_test {
         ($name:ident,$expected:expr,$data:expr) => {
             #[test]
