@@ -1,3 +1,6 @@
+mod md5;
+mod sha256;
+
 use anyhow::anyhow;
 use anyhow::Context as Ctx;
 use anyhow::Result;
@@ -9,9 +12,7 @@ use std::io::BufRead;
 use std::io::Read;
 use std::{fmt, io, path::PathBuf};
 
-use crate::hasher;
-use crate::md5;
-use crate::sha256;
+use crate::libs::hash;
 
 #[derive(Args)]
 pub struct Hash {
@@ -158,7 +159,7 @@ fn md5_hash_file(file: &PathBuf) -> Result<md5::Digest> {
         Input::new(&file).with_context(|| format!("fail to open {}", file.to_str().unwrap()))?;
     let ctx = md5::Context::new();
 
-    let mut hasher = hasher::Writer::new(ctx, hasher::Endian::Little);
+    let mut hasher = hash::Writer::new(ctx, hash::Endian::Little);
     io::copy(&mut buf_r, &mut hasher)
         .with_context(|| format!("fail to read {}", file.to_str().unwrap()))?;
     Ok(hasher.compute())
@@ -168,7 +169,7 @@ fn md5_hash_file(file: &PathBuf) -> Result<md5::Digest> {
 fn sha256_hash_file(file: &PathBuf) -> Result<sha256::Digest> {
     let mut buf_r =
         Input::new(&file).with_context(|| format!("fail to open {}", file.to_str().unwrap()))?;
-    let mut hasher = hasher::Writer::new(sha256::Context::new(), hasher::Endian::Big);
+    let mut hasher = hash::Writer::new(sha256::Context::new(), hash::Endian::Big);
     io::copy(&mut buf_r, &mut hasher)
         .with_context(|| format!("fail to read {}", file.to_str().unwrap()))?;
     Ok(hasher.compute())

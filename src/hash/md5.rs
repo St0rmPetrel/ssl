@@ -2,8 +2,8 @@ use anyhow::Result;
 
 use std::fmt;
 
-use crate::hasher;
-use crate::helper::{as_u32_le, as_u8_le, left_rotate};
+use crate::libs::bitutils::{as_u32_le, as_u8_le, left_rotate};
+use crate::libs::hash;
 
 const S: [usize; 64] = [
     7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 7, 12, 17, 22, 5, 9, 14, 20, 5, 9, 14, 20, 5, 9,
@@ -85,7 +85,7 @@ impl Context {
     }
 }
 
-impl hasher::Context for Context {
+impl hash::Context for Context {
     type Digest = Digest;
     fn compress(&mut self, chunk: &[u8; CHUNK_BYTE_SIZE]) {
         let words = split_words(chunk);
@@ -147,7 +147,7 @@ mod tests {
             #[test]
             fn $name() {
                 let ctx = Context::new();
-                let mut hasher = hasher::Writer::new(ctx, hasher::Endian::Little);
+                let mut hasher = hash::Writer::new(ctx, hash::Endian::Little);
 
                 hasher.write(&$data).unwrap();
 
@@ -164,7 +164,7 @@ mod tests {
             #[test]
             fn $name() {
                 let ctx = Context::new();
-                let mut hasher = hasher::Writer::new(ctx, hasher::Endian::Little);
+                let mut hasher = hash::Writer::new(ctx, hash::Endian::Little);
 
                 for chunk in $data.chunks($chunks) {
                     hasher.write(&chunk).unwrap();
