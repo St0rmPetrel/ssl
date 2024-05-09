@@ -7,12 +7,11 @@ use anyhow::Result;
 use clap::Args;
 use lazy_static::lazy_static;
 use regex::Regex;
-use std::fs;
 use std::io::BufRead;
-use std::io::Read;
 use std::{fmt, io, path::PathBuf};
 
 use crate::libs::hash;
+use crate::libs::input;
 
 #[derive(Args)]
 pub struct Hash {
@@ -58,7 +57,7 @@ impl Hash {
             .unwrap_or(vec![PathBuf::from("-")])
             .into_iter()
             .map(|f| {
-                let input = match Input::new(&f) {
+                let input = match input::Input::new(&f) {
                     Ok(input) => input,
                     Err(err) => {
                         eprintln!("{}", err);
@@ -155,8 +154,8 @@ fn print_file<Digest: fmt::Display>(file: &PathBuf, algo: &HashAlgo, digest: Dig
 
 /// read file (could be stdin "-") calculate hash of the file data
 fn md5_hash_file(file: &PathBuf) -> Result<md5::Digest> {
-    let mut buf_r =
-        Input::new(&file).with_context(|| format!("fail to open {}", file.to_str().unwrap()))?;
+    let mut buf_r = input::Input::new(&file)
+        .with_context(|| format!("fail to open {}", file.to_str().unwrap()))?;
     let ctx = md5::Context::new();
 
     let mut hasher = hash::Writer::new(ctx, hash::Endian::Little);
@@ -168,7 +167,7 @@ fn md5_hash_file(file: &PathBuf) -> Result<md5::Digest> {
 /// read file (could be stdin "-") calculate hash of the file data
 fn sha256_hash_file(file: &PathBuf) -> Result<sha256::Digest> {
     let mut buf_r =
-        Input::new(&file).with_context(|| format!("fail to open {}", file.to_str().unwrap()))?;
+        input::Input::new(&file).with_context(|| format!("fail to open {}", file.to_str().unwrap()))?;
     let mut hasher = hash::Writer::new(sha256::Context::new(), hash::Endian::Big);
     io::copy(&mut buf_r, &mut hasher)
         .with_context(|| format!("fail to read {}", file.to_str().unwrap()))?;
@@ -271,28 +270,5 @@ fn parse_sha256_checksum_line(line: &str) -> Result<(PathBuf, sha256::Digest)> {
         Ok((filename, expected_digest))
     } else {
         Err(anyhow::anyhow!("fail to parse line: {}", line))
-    }
-}
-
-enum Input<'a> {
-    File(fs::File),
-    Stdin(io::StdinLock<'a>),
-}
-
-impl<'a> Input<'a> {
-    pub fn new(name: &PathBuf) -> Result<Input<'a>> {
-        match name.to_str().unwrap() {
-            "-" => Ok(Input::Stdin(io::stdin().lock())),
-            _ => Ok(Input::File(fs::File::open(name)?)),
-        }
-    }
-}
-
-impl<'a> Read for Input<'a> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        match *self {
-            Input::File(ref mut file) => file.read(buf),
-            Input::Stdin(ref mut stdin) => stdin.read(buf),
-        }
     }
 }
