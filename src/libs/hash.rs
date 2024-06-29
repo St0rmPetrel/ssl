@@ -1,3 +1,7 @@
+pub mod md5;
+pub mod sha256;
+
+use std::fmt;
 use std::io::{self, Write};
 
 const CHUNK_BYTE_SIZE: usize = 64;
@@ -24,12 +28,65 @@ pub enum Endian {
     Little,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum Func {
+    MD5,
+    SHA256,
+}
+
+impl fmt::Display for Func {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Func::MD5 => write!(f, "MD5"),
+            Func::SHA256 => write!(f, "SHA256"),
+        }
+    }
+}
+
+#[derive(PartialEq)]
+pub enum Digest {
+    MD5(md5::Digest),
+    SHA256(sha256::Digest),
+}
+
+impl fmt::Display for Digest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match &self {
+            Digest::MD5(digest) => write!(f, "{}", digest),
+            Digest::SHA256(digest) => write!(f, "{}", digest),
+        }
+    }
+}
+
 pub struct Writer<Ctx: Context> {
     buf: [u8; CHUNK_BYTE_SIZE],
     buf_seed: usize,
     data_bytes_len: usize,
     endian: Endian,
     hasher: Ctx,
+}
+
+pub fn digest<R: io::Read>(r: R, f: Func) -> io::Result<Digest> {
+    match f {
+        Func::MD5 => Ok(Digest::MD5(md5(r)?)),
+        Func::SHA256 => Ok(Digest::SHA256(sha256(r)?)),
+    }
+}
+
+pub fn md5<R: io::Read>(mut r: R) -> io::Result<md5::Digest> {
+    let ctx = md5::Context::new();
+    let mut hasher = Writer::new(ctx, Endian::Little);
+    io::copy(&mut r, &mut hasher)?;
+
+    Ok(hasher.compute())
+}
+
+pub fn sha256<R: io::Read>(mut r: R) -> io::Result<sha256::Digest> {
+    let ctx = sha256::Context::new();
+    let mut hasher = Writer::new(ctx, Endian::Big);
+    io::copy(&mut r, &mut hasher)?;
+
+    Ok(hasher.compute())
 }
 
 impl<Ctx: Context> Write for Writer<Ctx> {
