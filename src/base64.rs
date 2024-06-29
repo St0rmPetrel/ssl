@@ -1,10 +1,10 @@
 mod encoder;
 mod new_liner;
 
-use anyhow::Result;
 use clap::Args;
 use std::io;
 use std::path;
+use std::error;
 
 use crate::libs::input;
 
@@ -17,7 +17,7 @@ pub struct Base64 {
 }
 
 impl Base64 {
-    pub fn exec(self) -> Result<()> {
+    pub fn exec(self) -> Result<(), Box<dyn error::Error>> {
         let f = self.file.unwrap_or(path::PathBuf::from("-"));
         let mut input = input::Input::new(&f)?;
 

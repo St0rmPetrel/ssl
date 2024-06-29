@@ -1,5 +1,3 @@
-use anyhow::Result;
-
 use std::fmt;
 
 use crate::libs::bitutils::{as_u32_be, as_u8_be, right_rotate};
@@ -7,7 +5,8 @@ use crate::libs::hash;
 
 const DIGEST_WORD_SIZE: usize = 8;
 const BYTES_IN_WORD: usize = 4;
-const DIGEST_BYTE_SIZE: usize = DIGEST_WORD_SIZE * BYTES_IN_WORD;
+pub const DIGEST_BYTE_SIZE: usize = DIGEST_WORD_SIZE * BYTES_IN_WORD;
+pub const DIGEST_STR_LEN: usize = 2 * DIGEST_BYTE_SIZE;
 const CHUNK_BYTE_SIZE: usize = 64;
 
 const K: [u32; 64] = [
@@ -37,14 +36,8 @@ impl fmt::Display for Digest {
 }
 
 impl Digest {
-    pub fn from_str(s: &str) -> Result<Digest> {
-        let mut digest = [0u8; DIGEST_BYTE_SIZE];
-        digest
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, x)| *x = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap());
-
-        Ok(Digest(digest))
+    pub fn new(digest: [u8; DIGEST_BYTE_SIZE]) -> Digest {
+        Digest(digest)
     }
 }
 
