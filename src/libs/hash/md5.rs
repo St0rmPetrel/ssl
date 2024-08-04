@@ -1,5 +1,3 @@
-use anyhow::Result;
-
 use std::fmt;
 
 use crate::libs::bitutils::{as_u32_le, as_u8_le, left_rotate};
@@ -28,7 +26,8 @@ const C0: u32 = 0x98badcfe;
 const D0: u32 = 0x10325476;
 
 const CHUNK_BYTE_SIZE: usize = 64;
-const DIGEST_BYTE_SIZE: usize = 16;
+pub const DIGEST_BYTE_SIZE: usize = 16;
+pub const DIGEST_STR_LEN: usize = 32;
 
 #[derive(Debug, PartialEq)]
 pub struct Digest([u8; DIGEST_BYTE_SIZE]);
@@ -46,8 +45,12 @@ impl fmt::Display for Digest {
 }
 
 impl Digest {
-    pub fn from_state(a_s: u32, b_s: u32, c_s: u32, d_s: u32) -> Digest {
-        let mut digest = [0u8; 16];
+    pub fn new(digest: [u8; DIGEST_BYTE_SIZE]) -> Digest {
+        Digest(digest)
+    }
+
+    fn from_state(a_s: u32, b_s: u32, c_s: u32, d_s: u32) -> Digest {
+        let mut digest = [0u8; DIGEST_BYTE_SIZE];
         digest[0..4].clone_from_slice(&as_u8_le(a_s));
         digest[4..8].clone_from_slice(&as_u8_le(b_s));
         digest[8..12].clone_from_slice(&as_u8_le(c_s));
@@ -56,15 +59,6 @@ impl Digest {
         Digest(digest)
     }
 
-    pub fn from_str(s: &str) -> Result<Digest> {
-        let mut digest = [0u8; 16];
-        digest
-            .iter_mut()
-            .enumerate()
-            .for_each(|(i, x)| *x = u8::from_str_radix(&s[2 * i..2 * i + 2], 16).unwrap());
-
-        Ok(Digest(digest))
-    }
 }
 
 pub struct Context {

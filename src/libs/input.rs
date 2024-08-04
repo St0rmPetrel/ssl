@@ -8,10 +8,16 @@ pub enum Input<'a> {
 }
 
 impl<'a> Input<'a> {
-    pub fn new(name: &path::PathBuf) -> io::Result<Input<'a>> {
-        match name.to_str().unwrap() {
-            "-" => Ok(Input::Stdin(io::stdin().lock())),
-            _ => Ok(Input::File(fs::File::open(name)?)),
+    pub fn new(file: &path::PathBuf) -> io::Result<Input<'a>> {
+        match fs::File::open(file) {
+            Ok(file) => Ok(Input::File(file)),
+            Err(err) => match err.kind() {
+                io::ErrorKind::NotFound => match file.to_str() {
+                    Some("-") => Ok(Input::Stdin(io::stdin().lock())),
+                    _ => Err(err),
+                },
+                _ => Err(err),
+            },
         }
     }
 }

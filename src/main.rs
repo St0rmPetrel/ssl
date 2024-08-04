@@ -1,9 +1,10 @@
-use anyhow::Result;
-
 use ssl::Cli;
 
-fn main() -> Result<()> {
+fn main() {
     let cli = Cli::new();
 
-    cli.run()
+    if let Err(err) = cli.run() {
+        eprintln!("{}", err);
+        std::process::exit(1)
+    }
 }
